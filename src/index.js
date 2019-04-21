@@ -1,33 +1,24 @@
 import "babel-polyfill";
 import Chart from "chart.js";
 
-const currencyURL = "www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml";
-// const meteoURL = "/xml.meteoservice.ru/export/gismeteo/point/140.xml";
 
-async function loadCurrency() {
-  const response = await fetch(currencyURL);
+const meteoURL = "/xml.meteoservice.ru/export/gismeteo/point/140.xml";
+
+async function loadWeather() {
+  const response = await fetch(meteoURL);
   const xmlTest = await response.text();
   const parser = new DOMParser();
-  const currencyData = parser.parseFromString(xmlTest, "text/xml");
-  // <Cube currency="USD" rate="1.1321" />
-  const rates = currencyData.querySelectorAll("Cube[currency][rate]");
+  const weatherData = parser.parseFromString(xmlTest, "text/xml");
+  const forecasts = weatherData.querySelectorAll("FORECAST");
   const result = Object.create(null);
-  for (let i = 0; i < rates.length; i++) {
-    const rateTag = rates.item(i);
-    const rate = rateTag.getAttribute("rate");
-    const currency = rateTag.getAttribute("currency");
-    result[currency] = rate;
-  }
-  result["EUR"] = 1;
-  // result["RANDOM"] = 1 + Math.random();
-  return result;
-}
-
-function normalizeDataByCurrency(data, currency) {
-  const result = Object.create(null);
-  const value = data[currency];
-  for (const key of Object.keys(data)) {
-    result[key] = value / data[key];
+  for (let i = 0; i < forecasts.length; i++) {
+    result[i] = Object.create(null);
+    const hour = forecasts[i].getAttribute("hour");
+    const temperature = (parseInt(forecasts[i].children[2].getAttribute("max")) + parseInt(forecasts[i].children[2].getAttribute("min")))/2;
+    const heat = forecasts[i].children[5].getAttribute("min");
+    result[i].hour = hour;
+    result[i].temperature = temperature;
+    result[i].heat = heat;
   }
   return result;
 }
@@ -35,24 +26,28 @@ function normalizeDataByCurrency(data, currency) {
 const buttonBuild = document.getElementById("btn");
 const canvasCtx = document.getElementById("out").getContext("2d");
 buttonBuild.addEventListener("click", async function() {
-  const currencyData = await loadCurrency();
-  const normalData = normalizeDataByCurrency(currencyData, "RUB");
-  const keys = Object.keys(normalData).sort((k1, k2) =>
-    compare(normalData[k1], normalData[k2])
-  );
-  const plotData = keys.map(key => normalData[key]);
+  const normalData = await loadWeather();
+  const keys = Object.keys(normalData);
+  const plotDataHour = keys.map(key => normalData[key].hour + ":00");
+  const plotDataTemperature = keys.map(key => normalData[key].temperature);
+  const plotDataHeat = keys.map(key => normalData[key].heat);
 
   const chartConfig = {
     type: "line",
-
     data: {
-      labels: keys,
+      labels: plotDataHour,
       datasets: [
         {
-          label: "Стоимость валюты в рублях",
-          backgroundColor: "rgb(255, 20, 20)",
-          borderColor: "rgb(180, 0, 0)",
-          data: plotData
+          label: "Ощущаемая температура",
+          backgroundColor: "rgb(53, 228, 226)",
+          borderColor: "rgb(5, 7, 77)",
+          data: plotDataHeat
+        },
+        {
+          label: "Температура",
+          backgroundColor: "rgb(240, 211, 0)",
+          borderColor: "rgbrgb(0, 0, 0)",
+          data: plotDataTemperature
         }
       ]
     }
@@ -61,6 +56,7 @@ buttonBuild.addEventListener("click", async function() {
   if (window.chart) {
     chart.data.labels = chartConfig.data.labels;
     chart.data.datasets[0].data = chartConfig.data.datasets[0].data;
+    chart.options = chartConfig.options;
     chart.update({
       duration: 800,
       easing: "easeOutBounce"
@@ -69,9 +65,3 @@ buttonBuild.addEventListener("click", async function() {
     window.chart = new Chart(canvasCtx, chartConfig);
   }
 });
-
-function compare(a, b) {
-  if (a > b) return 1;
-  if (a < b) return -1;
-  return 0;
-}
